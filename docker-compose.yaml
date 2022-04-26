@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  app:
+    build: .
+    env_file:
+      - .env
+    environment:
+      - MAX_WORKERS=1
+      - TIMEOUT=300
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./models:/opt/fapi-transformers/models
+
+
+  database:
+    image: postgres:12
+    env_file:
+      - .env
+    ports:
+      - "5432:5432"

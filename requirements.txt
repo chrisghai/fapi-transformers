@@ -1,0 +1,6 @@
+fastapi
+uvicorn
+sqlalchemy
+wheel
+torch
+transformers[sentencepiece]
