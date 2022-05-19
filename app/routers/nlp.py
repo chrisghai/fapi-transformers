@@ -20,6 +20,7 @@ from app.core.utils.nlp import (
     zero_shot as _zero_shot,
     binary_zero_shot as _binary_zero_shot,
     ner as _ner,
+    translate as _translate,
 )
 
 router = APIRouter(
@@ -27,10 +28,28 @@ router = APIRouter(
     tags=["nlp"],
 )
 
+
 @router.get("/models")
 async def list_models():
     models = os.listdir(settings.NLP_ROOT)
     return models
+
+
+@router.post("/translate/{src}-{tgt}")
+async def translate(
+    document: str,
+    src: str,
+    tgt: str,
+    num_beams: int = 50,
+) -> str:
+    translation = _translate(
+        document,
+        src=src,
+        tgt=tgt,
+        num_beams=num_beams,
+    )
+    return translation
+
 
 @router.post("/entity-recognition")
 async def ner(
@@ -39,12 +58,14 @@ async def ner(
     results = _ner(documents)
     return results
 
+
 @router.post("/question-answering")
 async def question_answering(
     qa_input: QuestionAnsweringInput,
 ) -> Dict:
     results = _question_answering(dict(qa_input))
     return results
+
 
 @router.post("/zero-shot")
 async def zero_shot(
@@ -56,6 +77,7 @@ async def zero_shot(
         format_results=format_results,
     )
     return results
+
 
 @router.post("/binary-zero-shot")
 async def binary_zero_shot(

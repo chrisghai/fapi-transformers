@@ -20,6 +20,7 @@ class Settings(BaseSettings):
     QA_MODEL: Dict
     ZS_MODEL: Dict
     NER_MODEL: Dict
+    RU_EN_MODEL: Dict
 
     POSTGRES_SERVER: str = "/opt/fapi-transformers/models"
     POSTGRES_USER: str

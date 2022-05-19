@@ -1,4 +1,7 @@
 import os
+import ftfy
+
+from emoji import get_emoji_regexp
 
 from typing import (
     Union,
@@ -9,6 +12,7 @@ from typing import (
 from transformers import (
     pipeline,
     AutoTokenizer,
+    AutoModelForSeq2SeqLM,
     AutoModelForQuestionAnswering,
     AutoModelForTokenClassification,
     AutoModelForSequenceClassification,
@@ -19,6 +23,7 @@ from app.core.config import settings
 QA_MODEL = settings.QA_MODEL
 ZS_MODEL = settings.ZS_MODEL
 NER_MODEL = settings.NER_MODEL
+RU_EN_MODEL = settings.RU_EN_MODEL
 
 LOADED_MODELS = {
     "ner": pipeline(
@@ -48,7 +53,45 @@ LOADED_MODELS = {
         os.path.isdir(ZS_MODEL["path"])
         and ZS_MODEL["load"]
     ) else None,
+
+    "ru_en": pipeline(
+        task="translation_ru_to_en",
+        model=AutoModelForSeq2SeqLM.from_pretrained(RU_EN_MODEL["path"]),
+        model=AutoTokenizer.from_pretrained(RU_EN_MODEL["path"]),
+    ) if (
+        os.path.isdir(RU_EN_MODEL["path"])
+        and RU_EN_MODEL["load"]
+    ) else None,
 }
+
+
+def clean_text(
+    document: str,
+) -> str:
+    document = ftfy.fix_text(document)
+    document = get_emoji_regexp().sub(r'', document.decode("utf-8"))
+    return document
+
+
+def translate(
+    document: str,
+    src: str = "ru",
+    tgt: str = "en",
+    num_beams: int = 50,
+) -> str:
+    classifier = LOADED_MODELS.get(f"{src}_{tgt}")
+    document = clean_text(document)
+
+    translation = ''
+    for sentence in document.split("\n"):
+        if sentence.strip():
+            translation += classifier(
+                sentence.strip(),
+                num_beams=num_beams,
+            )["translation_text"] + "\n\n"
+
+    return translation
+
 
 def ner(
     documents: List[str],
@@ -62,17 +105,18 @@ def ner(
         for r in result:
             r["score"] = float(r["score"])
     if results:
-        results = format_ner_results(results)
+        results = format_ner(results)
 
     return results
 
-def format_ner_results(
+
+def format_ner(
     results: List[Dict],
 ) -> List[Dict]:
     new_results = []
     for result in results:
-        if result:
-            for i, r in zip(range(len(result)), reversed(result)):
+            for i, r in enumerate(reversed(result)):
+                r["score"] = float(r["score"])
                 if (
                     i + 1 < len(result)
                     and r["entity_group"] == result[i + 1]["entity_group"]
@@ -93,6 +137,7 @@ def format_ner_results(
 
     return new_results
 
+
 def question_answering(
     qa_input: Dict,
 ) -> Dict:
@@ -102,6 +147,7 @@ def question_answering(
         
     result = classifier(qa_input)
     return result
+
 
 def zero_shot(
     zs_input: Dict,
@@ -118,11 +164,12 @@ def zero_shot(
 
     results = classifier(documents, topics)
     if results and format_results:
-        results = format_zs_results(results)
+        results = format_zs(results)
 
     return results
 
-def format_zs_results(results: List[Dict]) -> List[Dict]:
+
+def format_zs(results: List[Dict]) -> List[Dict]:
     return [
         {
             l: s for l, s in zip(
@@ -131,6 +178,7 @@ def format_zs_results(results: List[Dict]) -> List[Dict]:
             )
         } for _result in results
     ]
+
 
 def binary_zero_shot(
     zs_input: Dict,
@@ -148,7 +196,7 @@ def binary_zero_shot(
 
     results = classifier(documents, topic)
     if results:
-        results = format_bzs_results(
+        results = format_bzs(
             results,
             raw_scores=raw_scores,
             threshold=threshold,
@@ -156,7 +204,8 @@ def binary_zero_shot(
 
     return results
 
-def format_bzs_results(
+
+def format_bzs(
     results: List[Dict],
     raw_scores: bool,
     threshold: float,
