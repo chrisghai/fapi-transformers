@@ -1,5 +1,6 @@
 import os
 import ftfy
+import torch
 
 from emoji import get_emoji_regexp
 
@@ -11,6 +12,7 @@ from typing import (
 
 from transformers import (
     pipeline,
+    Pipeline,
     AutoTokenizer,
     AutoModelForSeq2SeqLM,
     AutoModelForQuestionAnswering,
@@ -24,6 +26,7 @@ QA_MODEL = settings.QA_MODEL
 ZS_MODEL = settings.ZS_MODEL
 NER_MODEL = settings.NER_MODEL
 RU_EN_MODEL = settings.RU_EN_MODEL
+RU_EN_ENSEMBLE = settings.RU_EN_ENSEMBLE
 
 LOADED_MODELS = {
     "ner": pipeline(
@@ -57,7 +60,7 @@ LOADED_MODELS = {
     "ru_en": pipeline(
         task="translation_ru_to_en",
         model=AutoModelForSeq2SeqLM.from_pretrained(RU_EN_MODEL["path"]),
-        model=AutoTokenizer.from_pretrained(RU_EN_MODEL["path"]),
+        tokenizer=AutoTokenizer.from_pretrained(RU_EN_MODEL["path"]),
     ) if (
         os.path.isdir(RU_EN_MODEL["path"])
         and RU_EN_MODEL["load"]
@@ -65,30 +68,83 @@ LOADED_MODELS = {
 }
 
 
+try:
+    from fairseq.hub_utils import GeneratorHubInterface
+    from fairseq.models.transformer import TransformerModel
+    
+    LOADED_MODELS["ru_en_ensemble"] = TransformerModel.from_pretrained(
+        RU_EN_ENSEMBLE["path"],
+        checkpoint_file=":".join(
+            sorted(
+                [
+                    f for f in os.listdir(RU_EN_ENSEMBLE["path"])
+                    if ".pt" in f
+                ]
+            )
+        ),
+        bpe="fastbpe",
+        bpe_codes=os.path.join(RU_EN_ENSEMBLE["path"], "bpecodes"),
+    ) if (
+        os.path.isdir(RU_EN_ENSEMBLE["path"])
+        and RU_EN_ENSEMBLE["load"]
+    ) else None
+
+except:
+    pass
+
+
 def clean_text(
     document: str,
 ) -> str:
     document = ftfy.fix_text(document)
-    document = get_emoji_regexp().sub(r'', document.decode("utf-8"))
+    document = get_emoji_regexp().sub(
+        r'', 
+        document.encode().decode("utf-8"),
+    )
     return document
+
+
+def chunk(
+    document: str,
+) -> List[str]:
+    return [
+        s.strip() for s in document.split("\n")
+        if s.strip()
+    ]
 
 
 def translate(
     document: str,
-    src: str = "ru",
-    tgt: str = "en",
+    #src: str = "ru",
+    #tgt: str = "en",
+    model: str,
     num_beams: int = 50,
 ) -> str:
-    classifier = LOADED_MODELS.get(f"{src}_{tgt}")
-    document = clean_text(document)
+    #classifier = LOADED_MODELS.get(f"{src}_{tgt}")
+    classifier = LOADED_MODELS.get(model)
+    if classifier is None:
+        return None
 
-    translation = ''
-    for sentence in document.split("\n"):
-        if sentence.strip():
+    document = clean_text(document)
+    chunked_document = chunk(document)
+    translation = ""
+    for i, sentence in enumerate(chunked_document):
+        if isinstance(classifier, Pipeline):
             translation += classifier(
-                sentence.strip(),
+                sentence,
                 num_beams=num_beams,
-            )["translation_text"] + "\n\n"
+            )[0]["translation_text"]
+        
+        else:
+            classifier.eval()
+            with torch.no_grad():
+                translation += classifier.translate(
+                    sentence,
+                    beams=num_beams,
+                )
+
+        if i + 1 < len(chunked_document):
+            translation += "\n\n"
 
     return translation
 
@@ -98,7 +154,7 @@ def ner(
 ) -> List[Dict]:
     classifier = LOADED_MODELS.get("ner")
     if classifier is None:
-        return {"message": "Model is not loaded."}
+        return None
 
     results = classifier(documents)
     for result in results:
@@ -143,7 +199,7 @@ def question_answering(
 ) -> Dict:
     classifier = LOADED_MODELS.get("qa")
     if classifier is None:
-        return {"message": "Model is not loaded."}
+        return None
         
     result = classifier(qa_input)
     return result
@@ -155,7 +211,7 @@ def zero_shot(
 ) -> List[Dict]:
     classifier = LOADED_MODELS.get("zero-shot")
     if classifier is None:
-        return {"message": "Model is not loaded."}
+        return None
     
     documents, topics = (
         zs_input["documents"], 
@@ -187,7 +243,7 @@ def binary_zero_shot(
 ) -> List[Dict]:
     classifier = LOADED_MODELS.get("zero-shot")
     if classifier is None:
-        return {"message": "Model is not loaded."}
+        return None
 
     documents, topic = (
         zs_input["documents"],

@@ -2,7 +2,14 @@ fastapi
 uvicorn
 sqlalchemy
 wheel
+setuptools
 torch
 transformers[sentencepiece]
+sacremoses
+#cython
+#numpy
+#fairseq==0.10.0
+#fastBPE
+#subword_nmt
 ftfy
 emoji

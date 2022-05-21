@@ -1,6 +1,9 @@
 from pydantic import BaseModel
 from typing import Union, List
 
+class TranslationInput(BaseModel):
+    text: str
+
 class QuestionAnsweringInput(BaseModel):
     question: str
     context: str

@@ -13,6 +13,7 @@ from app.core.schemas.nlp import (
     BinaryZeroShotInput,
     QuestionAnsweringInput, 
     ZeroShotInput,
+    TranslationInput,
 )
 
 from app.core.utils.nlp import (
@@ -30,32 +31,39 @@ router = APIRouter(
 
 
 @router.get("/models")
-async def list_models():
+async def list_models() -> List[str]:
     models = os.listdir(settings.NLP_ROOT)
     return models
 
 
-@router.post("/translate/{src}-{tgt}")
+#@router.post("/translate/{src}-{tgt}")
+@router.post("/translate/{model}")
 async def translate(
-    document: str,
-    src: str,
-    tgt: str,
+    document: TranslationInput,
+    #src: str,
+    #tgt: str,
+    model: str,
     num_beams: int = 50,
-) -> str:
+) -> Union[dict, str]:
     translation = _translate(
-        document,
-        src=src,
-        tgt=tgt,
+        document=document.text,
+        #src=src,
+        #tgt=tgt,
+        model=model,
         num_beams=num_beams,
     )
+    if translation is None:
+        return {"message": "Model not loaded."}
     return translation
 
 
 @router.post("/entity-recognition")
 async def ner(
     documents: List[str],
-) -> List[Dict]:
+) -> Union[dict, List[Dict]]:
     results = _ner(documents)
+    if results is None:
+        return {"message": "Model not loaded."}
     return results
 
 
@@ -64,6 +72,8 @@ async def question_answering(
     qa_input: QuestionAnsweringInput,
 ) -> Dict:
     results = _question_answering(dict(qa_input))
+    if results is None:
+        return {"message": "Model not loaded."}
     return results
 
 
@@ -71,11 +81,13 @@ async def question_answering(
 async def zero_shot(
     zs_input: ZeroShotInput,
     format_results: bool = True,
-) -> List[Dict]:
+) -> Union[dict, List[Dict]]:
     results = _zero_shot(
         dict(zs_input),
         format_results=format_results,
     )
+    if results is None:
+        return {"message": "Model not loaded."}
     return results
 
 
@@ -84,10 +96,12 @@ async def binary_zero_shot(
     zs_input: BinaryZeroShotInput,
     raw_scores: bool = False,
     threshold: float = 0.5,
-) -> Union[List[float], List[bool]]:
+) -> Union[dict, List[float], List[bool]]:
     results = _binary_zero_shot(
         dict(zs_input),
         raw_scores,
         threshold,
     )
+    if results is None:
+        return {"message": "Model not loaded."}
     return results
